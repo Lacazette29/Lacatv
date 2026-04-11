@@ -1,27 +1,34 @@
 import { useState } from "react";
 import { useApp } from "../context/AppContext";
-import { ADMIN_PASSWORD } from "../utils/data";
+import { supabase } from "../utils/supabase";
 import { IcLock, IcBall } from "../components/Icons";
 
 export default function AdminLogin() {
   const { setAdminAuth } = useApp();
-  const [pw, setPw]     = useState("");
-  const [err, setErr]   = useState("");
-  const [loading, setLoading] = useState(false);
+  const [email,    setEmail]   = useState("");
+  const [pw,       setPw]      = useState("");
+  const [err,      setErr]     = useState("");
+  const [loading,  setLoading] = useState(false);
 
-  const attempt = () => {
-    if (!pw) return;
+  const attempt = async () => {
+    if (!email || !pw) return;
     setLoading(true);
-    // Simulate a brief delay (replace with real auth API call)
-    setTimeout(() => {
-      if (pw === ADMIN_PASSWORD) {
-        setAdminAuth(true);
-      } else {
-        setErr("Incorrect password. Try again.");
-        setPw("");
-        setLoading(false);
-      }
-    }, 600);
+    setErr("");
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: pw,
+    });
+
+    if (error || !data?.user) {
+      setErr("Incorrect email or password. Try again.");
+      setPw("");
+      setLoading(false);
+      return;
+    }
+
+    setAdminAuth(true);
+    setLoading(false);
   };
 
   return (
@@ -41,18 +48,14 @@ export default function AdminLogin() {
         width: "100%",
         maxWidth: 380,
         textAlign: "center",
-        boxShadow: "var(--shadow-lg)",
       }}>
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 6 }}>
           <div style={{
-            width: 36,
-            height: 36,
+            width: 36, height: 36,
             background: "var(--gold)",
             borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <IcBall size={20} stroke="var(--green-dark)" strokeWidth={2} />
           </div>
@@ -67,6 +70,34 @@ export default function AdminLogin() {
         </div>
         <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 30 }}>
           Admin Portal — Restricted Access
+        </div>
+
+        {/* Email field */}
+        <div style={{
+          background: "var(--surface2)",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          padding: "10px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 10,
+        }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+          </svg>
+          <input
+            type="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setErr(""); }}
+            onKeyDown={e => e.key === "Enter" && attempt()}
+            placeholder="Admin email"
+            autoFocus
+            style={{
+              background: "transparent", border: "none", outline: "none",
+              color: "var(--text)", width: "100%", fontSize: 14,
+            }}
+          />
         </div>
 
         {/* Password field */}
@@ -87,15 +118,10 @@ export default function AdminLogin() {
             value={pw}
             onChange={e => { setPw(e.target.value); setErr(""); }}
             onKeyDown={e => e.key === "Enter" && attempt()}
-            placeholder="Enter admin password"
-            autoFocus
+            placeholder="Password"
             style={{
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "var(--text)",
-              width: "100%",
-              fontSize: 14,
+              background: "transparent", border: "none", outline: "none",
+              color: "var(--text)", width: "100%", fontSize: 14,
             }}
           />
         </div>
@@ -108,7 +134,7 @@ export default function AdminLogin() {
 
         <button
           onClick={attempt}
-          disabled={loading || !pw}
+          disabled={loading || !email || !pw}
           style={{
             width: "100%",
             background: loading ? "var(--green-mid)" : "var(--green-light)",
@@ -120,15 +146,11 @@ export default function AdminLogin() {
             fontWeight: 600,
             cursor: loading ? "default" : "pointer",
             transition: "background 0.15s",
-            opacity: !pw ? 0.6 : 1,
+            opacity: (!email || !pw) ? 0.6 : 1,
           }}
         >
           {loading ? "Authenticating..." : "Access Admin Panel"}
         </button>
-
-        <p style={{ marginTop: 16, fontSize: 11, color: "var(--text-dim)" }}>
-          Default: <code style={{ color: "var(--gold-dark)", background: "var(--surface2)", padding: "2px 6px", borderRadius: 4 }}>lacatv2026</code>
-        </p>
       </div>
     </div>
   );
