@@ -1,25 +1,31 @@
-import logo from './logo.svg';
-import './App.css';
+import "./styles/globals.css";
+import { AppProvider, useApp } from "./context/AppContext";
+import HomePage from "./pages/HomePage";
+import VideoPlayerPage from "./pages/VideoPlayerPage";
+import AdminPanel from "./admin/AdminPanel";
+import AdminLogin from "./admin/AdminLogin";
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+// ── Router ─────────────────────────────────────
+function Router() {
+  const { page } = useApp();
+
+  // Admin subdomain / path detection
+  const isAdminRoute =
+    window.location.hostname.startsWith("admin.") ||
+    window.location.pathname.startsWith("/admin");
+
+  if (isAdminRoute) return <AdminPanel />;
+
+  if (page === "player") return <VideoPlayerPage />;
+  if (page === "admin")  return <AdminPanel />;
+  return <HomePage />;
 }
 
-export default App;
+// ── Root ───────────────────────────────────────
+export default function App() {
+  return (
+    <AppProvider>
+      <Router />
+    </AppProvider>
+  );
+}
