@@ -1,18 +1,88 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import Header from "../components/Header";
 import ScoresTicker from "../components/ScoresTicker";
 import { fmtViews, timeAgo } from "../utils/helpers";
 import {
   IcThumbUp, IcBookmark, IcShare, IcArrowLeft,
-  IcEye, IcClock, IcPlay,
+  IcEye, IcClock,
 } from "../components/Icons";
 
+// ── Google AdSense slot (replace with your publisher ID) ──
+function AdBanner({ slot = "horizontal" }) {
+  useEffect(() => {
+    try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) {}
+  }, []);
+
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      overflow: "hidden",
+      textAlign: "center",
+      marginBottom: 16,
+      minHeight: slot === "horizontal" ? 90 : 250,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}>
+      {/* Replace data-ad-client and data-ad-slot with your own from AdSense */}
+      <ins
+        className="adsbygoogle"
+        style={{ display: "block" }}
+        data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+        data-ad-slot={slot === "horizontal" ? "1234567890" : "0987654321"}
+        data-ad-format={slot === "horizontal" ? "horizontal" : "rectangle"}
+        data-full-width-responsive="true"
+      />
+    </div>
+  );
+}
+
+// ── Betting affiliate button ──────────────────────────────
+function BetButton({ video }) {
+  const query = encodeURIComponent(video.title.split("—")[0].trim());
+  return (
+    <a
+      href={`https://www.bet9ja.com/category/sports?q=${query}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 18px",
+        borderRadius: 8,
+        background: "linear-gradient(135deg, #006400, #009900)",
+        color: "#fff",
+        fontSize: 13,
+        fontWeight: 600,
+        textDecoration: "none",
+        marginBottom: 16,
+        transition: "opacity 0.15s",
+      }}
+      onMouseEnter={e => e.currentTarget.style.opacity = "0.85"}
+      onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
+      </svg>
+      Bet on Next Match — Bet9ja
+    </a>
+  );
+}
+
 export default function VideoPlayerPage() {
-  const { currentVideo: video, videos, navigate } = useApp();
-  const [liked, setLiked]   = useState(false);
-  const [saved, setSaved]   = useState(false);
+  const { currentVideo: video, videos, navigate, incrementViews } = useApp();
+  const [liked,  setLiked]  = useState(false);
+  const [saved,  setSaved]  = useState(false);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (video?.id) incrementViews(video.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video?.id]);
 
   if (!video) { navigate("home"); return null; }
 
@@ -60,6 +130,10 @@ export default function VideoPlayerPage() {
       <div style={{ display: "flex", maxWidth: 1400, margin: "0 auto" }}>
         {/* Main player */}
         <div style={{ flex: 1, padding: "22px 24px", minWidth: 0 }}>
+
+          {/* Top banner ad */}
+          <AdBanner slot="horizontal" />
+
           {/* Video player */}
           <div style={{
             borderRadius: 12,
@@ -67,7 +141,6 @@ export default function VideoPlayerPage() {
             background: "#000",
             marginBottom: 16,
             aspectRatio: "16/9",
-            boxShadow: "var(--shadow-lg)",
           }}>
             <video
               controls
@@ -146,7 +219,10 @@ export default function VideoPlayerPage() {
             </div>
           </div>
 
-          {/* Description box */}
+          {/* Bet9ja affiliate button */}
+          <BetButton video={video} />
+
+          {/* Description */}
           <div style={{
             background: "var(--surface)",
             borderRadius: 10,
@@ -175,22 +251,17 @@ export default function VideoPlayerPage() {
             )}
           </div>
 
-          <button
-            className="btn btn-ghost"
-            onClick={() => navigate("home")}
-          >
+          {/* Mid-content rectangle ad */}
+          <AdBanner slot="rectangle" />
+
+          <button className="btn btn-ghost" onClick={() => navigate("home")}>
             <IcArrowLeft size={15} /> Back to Home
           </button>
         </div>
 
         {/* Related videos sidebar */}
-        <div style={{
-          width: 320,
-          padding: "22px 24px 22px 0",
-          flexShrink: 0,
-        }}>
+        <div style={{ width: 320, padding: "22px 24px 22px 0", flexShrink: 0 }}>
           <div className="section-title" style={{ fontSize: 16 }}>Up Next</div>
-
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {related.map(v => (
               <div
@@ -216,35 +287,20 @@ export default function VideoPlayerPage() {
                   background: `linear-gradient(${v.bgGrad})`,
                   position: "relative",
                 }}>
-                  <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.07 }} viewBox="0 0 116 65">
-                    <line x1="58" y1="0" x2="58" y2="65" stroke="white" strokeWidth="0.8" />
-                    <circle cx="58" cy="32" r="16" stroke="white" strokeWidth="0.8" fill="none" />
-                  </svg>
                   <span style={{
-                    position: "absolute",
-                    bottom: 3,
-                    right: 4,
-                    background: "rgba(0,0,0,0.82)",
-                    color: "#fff",
-                    fontSize: 9,
-                    padding: "1px 4px",
-                    borderRadius: 3,
+                    position: "absolute", bottom: 3, right: 4,
+                    background: "rgba(0,0,0,0.82)", color: "#fff",
+                    fontSize: 9, padding: "1px 4px", borderRadius: 3,
                   }}>
                     {v.duration}
                   </span>
                 </div>
-
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "var(--text)",
-                    lineHeight: 1.4,
-                    marginBottom: 4,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
+                    fontSize: 12, fontWeight: 500, color: "var(--text)",
+                    lineHeight: 1.4, marginBottom: 4,
+                    display: "-webkit-box", WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical", overflow: "hidden",
                   }}>
                     {v.title}
                   </div>

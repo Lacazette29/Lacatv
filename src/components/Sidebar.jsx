@@ -1,4 +1,4 @@
-import { IcHome, IcTrending, IcClock, IcBookmark, IcTrophy, IcSettings } from "./Icons";
+import { IcHome, IcTrending, IcClock, IcBookmark, IcSettings } from "./Icons";
 
 const NAV_ITEMS = [
   { id: "home",     Icon: IcHome,     label: "Home"     },
