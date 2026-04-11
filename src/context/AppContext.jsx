@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 
 const AppCtx = createContext(null);
@@ -20,40 +20,28 @@ export function AppProvider({ children }) {
     allowComments: false,
   });
 
-  // ── Restore Supabase Auth session on load ─────
+  // ── Restore Supabase Auth session ─────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) setAdminAuth(true);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setAdminAuth(!!session);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Fetch initial data ────────────────────────
-  useEffect(() => {
-    fetchAll();
-  }, []);
-
-  async function fetchAll() {
-    setLoading(true);
-    await Promise.all([fetchVideos(), fetchLeagues(), fetchSettings()]);
-    setLoading(false);
-  }
-
-  async function fetchVideos() {
+  // ── Fetch functions (stable with useCallback) ─
+  const fetchVideos = useCallback(async () => {
     const { data, error } = await supabase
       .from("videos")
       .select("*, leagues(name, flag, color)")
       .order("uploaded_at", { ascending: false });
     if (error) { console.error("fetchVideos:", error); return; }
     setVideos((data || []).map(normaliseVideo));
-  }
+  }, []);
 
-  async function fetchLeagues() {
+  const fetchLeagues = useCallback(async () => {
     const { data, error } = await supabase
       .from("leagues")
       .select("*")
@@ -61,9 +49,9 @@ export function AppProvider({ children }) {
       .order("sort_order");
     if (error) { console.error("fetchLeagues:", error); return; }
     setLeagues(["All", ...(data || []).map(l => l.name)]);
-  }
+  }, []);
 
-  async function fetchSettings() {
+  const fetchSettings = useCallback(async () => {
     const { data, error } = await supabase
       .from("site_settings")
       .select("*")
@@ -78,9 +66,20 @@ export function AppProvider({ children }) {
         allowComments:   data.allow_comments,
       });
     }
-  }
+  }, []);
 
-  // ── Realtime: videos table ────────────────────
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchVideos(), fetchLeagues(), fetchSettings()]);
+    setLoading(false);
+  }, [fetchVideos, fetchLeagues, fetchSettings]);
+
+  // ── Initial load ──────────────────────────────
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  // ── Realtime: videos ──────────────────────────
   useEffect(() => {
     const channel = supabase
       .channel("videos-changes")
@@ -89,7 +88,7 @@ export function AppProvider({ children }) {
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, []);
+  }, [fetchVideos]);
 
   // ── Navigation ────────────────────────────────
   const navigate = (to, data = null) => {
@@ -109,10 +108,7 @@ export function AppProvider({ children }) {
   // ── Video CRUD ────────────────────────────────
   const addVideo = async (v) => {
     const { data: league } = await supabase
-      .from("leagues")
-      .select("id")
-      .eq("name", v.league)
-      .single();
+      .from("leagues").select("id").eq("name", v.league).single();
 
     const { data, error } = await supabase
       .from("videos")
@@ -144,7 +140,6 @@ export function AppProvider({ children }) {
     if (updates.bgGrad      !== undefined) dbUpdates.bg_grad     = updates.bgGrad;
     if (updates.featured    !== undefined) dbUpdates.featured    = updates.featured;
     if (updates.isNew       !== undefined) dbUpdates.is_new      = updates.isNew;
-
     const { error } = await supabase.from("videos").update(dbUpdates).eq("id", id);
     if (error) { console.error("updateVideo:", error); return; }
     setVideos(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
@@ -170,7 +165,7 @@ export function AppProvider({ children }) {
     await supabase.from("videos").update({ views: (current?.views || 0) + 1 }).eq("id", id);
   };
 
-  // ── Settings save ─────────────────────────────
+  // ── Settings ──────────────────────────────────
   const saveSettings = async (settings) => {
     const { error } = await supabase
       .from("site_settings")
@@ -202,7 +197,6 @@ export function AppProvider({ children }) {
   );
 }
 
-// ── Normalise DB row → component shape ──────────
 function normaliseVideo(row) {
   return {
     id:          row.id,

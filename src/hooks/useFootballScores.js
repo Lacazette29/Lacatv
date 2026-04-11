@@ -4,126 +4,107 @@ import { supabase } from "../utils/supabase";
 const API_KEY  = process.env.REACT_APP_FOOTBALL_API_KEY;
 const BASE_URL = "https://api-football-v1.p.rapidapi.com/v3";
 
-// League IDs on API-Football
-const LEAGUE_IDS = {
-  "Premier League":   39,
-  "La Liga":          140,
-  "Champions League": 2,
-  "Bundesliga":       78,
-  "Serie A":          135,
-  "Ligue 1":          61,
-  "Europa League":    3,
-  "NPFL":             332,
-  "AFCON":            6,
+const HEADERS = {
+  "x-rapidapi-key":  API_KEY,
+  "x-rapidapi-host": "api-football-v1.p.rapidapi.com",
 };
+
+async function fetchFromSupabase() {
+  const { data } = await supabase
+    .from("live_scores")
+    .select("*")
+    .order("match_date", { ascending: true });
+  return (data || []).map(supabaseToScore);
+}
+
+async function syncToSupabase(scores) {
+  for (const score of scores) {
+    await supabase.from("live_scores").upsert(
+      {
+        id:           score.id,
+        league:       score.league,
+        home_team:    score.home_team,
+        away_team:    score.away_team,
+        home_score:   score.home_score,
+        away_score:   score.away_score,
+        minute:       score.minute,
+        status:       score.status,
+        match_date:   score.match_date,
+        home_scorers: score.home_scorers,
+        away_scorers: score.away_scorers,
+        updated_at:   new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
+  }
+}
+
+async function fetchTodayFromAPI() {
+  const today = new Date().toISOString().split("T")[0];
+  const res   = await fetch(`${BASE_URL}/fixtures?date=${today}`, { headers: HEADERS });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const json  = await res.json();
+  return (json.response || []).map(normaliseFixture);
+}
+
+async function fetchLiveFromAPI() {
+  const res  = await fetch(`${BASE_URL}/fixtures?live=all`, { headers: HEADERS });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const json = await res.json();
+  return (json.response || []).map(normaliseFixture);
+}
 
 export function useFootballScores() {
   const [scores,  setScores]  = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
 
-  const fetchLiveScores = useCallback(async () => {
+  const refresh = useCallback(async () => {
     try {
-      // Fetch all live fixtures from API-Football
-      const res = await fetch(`${BASE_URL}/fixtures?live=all`, {
-        headers: {
-          "x-rapidapi-key":  API_KEY,
-          "x-rapidapi-host": "api-football-v1.p.rapidapi.com",
-        },
-      });
+      // Try live fixtures first
+      let fixtures = await fetchLiveFromAPI();
 
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const json = await res.json();
-      const fixtures = json.response || [];
-
+      // If no live games, get today's full schedule
       if (fixtures.length === 0) {
-        // No live games right now — fetch today's fixtures instead
-        await fetchTodayFixtures();
-        return;
+        fixtures = await fetchTodayFromAPI();
       }
 
-      // Normalise and sync to Supabase
-      const normalised = fixtures.map(normaliseFixture);
-      await syncToSupabase(normalised);
-      setScores(normalised);
+      if (fixtures.length > 0) {
+        await syncToSupabase(fixtures);
+        setScores(fixtures);
+      } else {
+        // Fall back to whatever is in Supabase
+        const fallback = await fetchFromSupabase();
+        setScores(fallback);
+      }
 
+      setError(null);
     } catch (err) {
-      console.error("Football API error:", err);
+      console.error("Football API error:", err.message);
       setError(err.message);
-      // Fall back to Supabase data
-      await fetchFromSupabase();
+      // Always fall back to Supabase on error
+      const fallback = await fetchFromSupabase();
+      setScores(fallback);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const fetchTodayFixtures = async () => {
-    try {
-      const today = new Date().toISOString().split("T")[0];
-      const res = await fetch(`${BASE_URL}/fixtures?date=${today}`, {
-        headers: {
-          "x-rapidapi-key":  API_KEY,
-          "x-rapidapi-host": "api-football-v1.p.rapidapi.com",
-        },
-      });
-      const json = await res.json();
-      const fixtures = (json.response || [])
-        .filter(f => Object.values(LEAGUE_IDS).includes(f.league.id));
-
-      const normalised = fixtures.map(normaliseFixture);
-      await syncToSupabase(normalised);
-      setScores(normalised);
-    } catch (err) {
-      await fetchFromSupabase();
-    }
-  };
-
-  const fetchFromSupabase = async () => {
-    const { data } = await supabase
-      .from("live_scores")
-      .select("*")
-      .order("match_date", { ascending: true });
-    if (data) setScores(data.map(supabaseToScore));
-  };
-
-  // Sync API data to Supabase so realtime works across all clients
-  const syncToSupabase = async (scores) => {
-    for (const score of scores) {
-      await supabase
-        .from("live_scores")
-        .upsert({
-          id:           score.id,
-          league:       score.league,
-          home_team:    score.home_team,
-          away_team:    score.away_team,
-          home_score:   score.home_score,
-          away_score:   score.away_score,
-          minute:       score.minute,
-          status:       score.status,
-          match_date:   score.match_date,
-          home_scorers: score.home_scorers,
-          away_scorers: score.away_scorers,
-          updated_at:   new Date().toISOString(),
-        }, { onConflict: "id" });
-    }
-  };
+  }, []); // No external dependencies — all helpers are module-level functions
 
   useEffect(() => {
-    fetchLiveScores();
-    // Refresh every 60 seconds (API free tier: 100 req/day)
-    const interval = setInterval(fetchLiveScores, 60000);
+    refresh();
+    // Refresh every 60s (stays within 100 req/day free tier)
+    const interval = setInterval(refresh, 60000);
     return () => clearInterval(interval);
-  }, [fetchLiveScores]);
+  }, [refresh]);
 
-  return { scores, loading, error, refetch: fetchLiveScores };
+  return { scores, loading, error, refetch: refresh };
 }
 
-// ── Normalise API-Football fixture → our shape ──
+// ── Helpers ──────────────────────────────────────
 function normaliseFixture(f) {
   const status = getStatus(f.fixture.status.short);
   const minute = f.fixture.status.elapsed || 0;
 
-  // Extract goalscorers
   const homeScorers = (f.events || [])
     .filter(e => e.type === "Goal" && e.team.id === f.teams.home.id)
     .map(e => `${e.player.name} ${e.time.elapsed}'`);
@@ -133,7 +114,7 @@ function normaliseFixture(f) {
     .map(e => `${e.player.name} ${e.time.elapsed}'`);
 
   return {
-    id:           f.fixture.id.toString(),
+    id:           String(f.fixture.id),
     league:       f.league.name,
     home_team:    f.teams.home.name,
     away_team:    f.teams.away.name,
@@ -148,8 +129,8 @@ function normaliseFixture(f) {
 }
 
 function getStatus(short) {
-  if (["1H", "HT", "2H", "ET", "BT", "P", "LIVE"].includes(short)) return "live";
-  if (["FT", "AET", "PEN"].includes(short))                          return "ft";
+  if (["1H","HT","2H","ET","BT","P","LIVE"].includes(short)) return "live";
+  if (["FT","AET","PEN"].includes(short))                    return "ft";
   return "upcoming";
 }
 
