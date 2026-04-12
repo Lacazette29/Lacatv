@@ -31,11 +31,12 @@ function AdBanner({ slot = "horizontal" }) {
       <ins
         className="adsbygoogle"
         style={{ display: "block" }}
-        data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
-        data-ad-slot={slot === "horizontal" ? "1234567890" : "0987654321"}
-        data-ad-format={slot === "horizontal" ? "horizontal" : "rectangle"}
+        data-ad-client="ca-pub-5457549513551541"
+        data-ad-slot={slot === "horizontal" ? "2509457925" : "2679405359"}
+        data-ad-format={slot === "horizontal" ? "square" : "horizontal"}
         data-full-width-responsive="true"
       />
+      
     </div>
   );
 }
