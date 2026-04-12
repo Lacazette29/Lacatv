@@ -3,8 +3,8 @@ import { useApp } from "../context/AppContext";
 import Header from "../components/Header";
 
 const API_KEY  = process.env.REACT_APP_FOOTBALL_API_KEY;
-const BASE_URL = "https://api-football-v1.p.rapidapi.com/v3";
-const HEADERS  = { "x-rapidapi-key": API_KEY, "x-rapidapi-host": "api-football-v1.p.rapidapi.com" };
+const BASE_URL = "https://v3.football.api-sports.io";
+const HEADERS  = { "x-apisports-key": API_KEY };
 const TODAY    = new Date().toISOString().split("T")[0];
 const TABS     = [
   { id: "live",     label: "Live Now"  },
