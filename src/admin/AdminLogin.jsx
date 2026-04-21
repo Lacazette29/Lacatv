@@ -31,34 +31,26 @@ export default function AdminLogin() {
   const [err,     setErr]     = useState("");
   const [loading, setLoading] = useState(false);
 
-const attempt = async () => {
-  if (!email || !pw) return;
-  setLoading(true);
-  setErr("");
+  const attempt = async () => {
+    if (!email || !pw) return;
+    setLoading(true);
+    setErr("");
 
-  // Try Supabase Auth first
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.trim().toLowerCase(),
-    password: pw,
-  });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password: pw,
+    });
 
-  if (!error && data?.user) {
+    if (error || !data?.user) {
+      setErr("Incorrect email or password. Please try again.");
+      setPw("");
+      setLoading(false);
+      return;
+    }
+
     setAdminAuth(true);
     setLoading(false);
-    return;
-  }
-
-  // Temporary fallback while Supabase Auth is being fixed
-  if (email.trim().toLowerCase() === "markethub92@gmail.com" && pw === "Noreply442@#") {
-    setAdminAuth(true);
-    setLoading(false);
-    return;
-  }
-
-  setErr("Incorrect email or password. Please try again.");
-  setPw("");
-  setLoading(false);
-};
+  };
 
   return (
     <div style={{
@@ -155,10 +147,10 @@ const attempt = async () => {
           {loading ? "Authenticating..." : "Access Admin Panel"}
         </button>
 
-        <p style={{ marginTop:20, fontSize:11, color:"var(--text-dim)" }}>
-          Authorized personnel only
+        <p style={{ marginTop:20, fontSize:11, color:"var(--text-dim)", lineHeight:1.6 }}>
+          Use your Supabase admin credentials.<br/>
+          Login: <span style={{ color:"var(--gold-dark)" }}>Markethub92@gmail.com</span>
         </p>
-
       </div>
     </div>
   );
