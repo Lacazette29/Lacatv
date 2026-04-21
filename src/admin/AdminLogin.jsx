@@ -147,10 +147,9 @@ export default function AdminLogin() {
           {loading ? "Authenticating..." : "Access Admin Panel"}
         </button>
 
-        <p style={{ marginTop:20, fontSize:11, color:"var(--text-dim)", lineHeight:1.6 }}>
-          Use your Supabase admin credentials.<br/>
-          Login: <span style={{ color:"var(--gold-dark)" }}>Markethub92@gmail.com</span>
-        </p>
+<p style={{ marginTop:20, fontSize:11, color:"var(--text-dim)" }}>
+  Authorized personnel only
+</p>
       </div>
     </div>
   );
