@@ -63,12 +63,12 @@ function LeaguePill({ league, active, onClick }) {
       onClick={onClick}
       style={{
         display:"flex", alignItems:"center", gap:6,
-        padding:"6px 14px", borderRadius:20, border:"none",
+        padding:"6px 14px", borderRadius:20,
+        border: active ? "none" : "1px solid var(--border)",
         background: active ? "var(--green-light)" : "var(--surface2)",
         color: active ? "#fff" : "var(--text-muted)",
         fontSize:12, fontWeight: active ? 600 : 400,
         cursor:"pointer", transition:"all 0.15s", whiteSpace:"nowrap",
-        border: active ? "none" : "1px solid var(--border)",
       }}
     >
       <span style={{ fontSize:14 }}>{league.flag}</span>
