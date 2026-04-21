@@ -73,88 +73,76 @@ function UploadTab() {
   };
 
   const uploadFileToSupabase = async (file) => {
-    const ext      = file.name.split(".").pop().toLowerCase();
-    const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const filePath = `highlights/${filename}`;
+  const ext      = file.name.split(".").pop().toLowerCase();
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const filePath = `highlights/${filename}`;
 
-    setUploadProgress(5);
-    let fakeP = 5;
-    const timer = setInterval(() => {
-      const inc = fakeP < 40 ? 8 : fakeP < 60 ? 5 : fakeP < 75 ? 2 : 0;
-      fakeP = Math.min(fakeP + inc, 80);
-      setUploadProgress(fakeP);
-    }, 600);
+  setUploadProgress(5);
+  let fakeP = 5;
+  const timer = setInterval(() => {
+    const inc = fakeP < 40 ? 8 : fakeP < 60 ? 5 : fakeP < 75 ? 2 : 0;
+    fakeP = Math.min(fakeP + inc, 80);
+    setUploadProgress(fakeP);
+  }, 600);
 
-    try {
-      const { data: uploadData, error } = await supabase.storage
-        .from("videos")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type || "video/mp4",
-        });
-
-      clearInterval(timer);
-
-      if (error) {
-        setUploadProgress(0);
-        if (error.message.includes("Bucket not found")) {
-          throw new Error("Storage bucket missing. Go to Supabase Dashboard → Storage → New bucket → name it videos → set Public.");
-        }
-        if (error.message.includes("security") || error.message.includes("policy") || error.message.includes("Unauthorized")) {
-          throw new Error("Storage permission denied. Run the storage policy SQL in Supabase SQL Editor.");
-        }
-        if (error.message.includes("exceeded") || error.message.includes("limit")) {
-          throw new Error("File too large. Try a smaller file or use YouTube URL instead.");
-        }
-        throw new Error(error.message);
-      }
-
-      setUploadProgress(95);
-      const { data: urlData } = supabase.storage.from("videos").getPublicUrl(filePath);
-      setUploadProgress(100);
-      return urlData.publicUrl;
-    } catch (err) {
-      clearInterval(timer);
-      setUploadProgress(0);
-      throw err;
-    }
-  };
-
-  const publish = async () => {
-    if (!form.title.trim()) return notify("error", "Title is required.");
-    if (videoSource === "file" && !selectedFile) return notify("error", "Please select a video file to upload.");
-    if (videoSource === "url" && !form.videoUrl.trim()) return notify("error", "Please enter a video URL.");
-
-    setUploading(true);
-    setUploadProgress(0);
-
-    try {
-      let finalUrl = form.videoUrl;
-
-      if (videoSource === "file" && selectedFile) {
-        notify("info", "Uploading video... please wait.");
-        finalUrl = await uploadFileToSupabase(selectedFile);
-      }
-
-      await addVideo({
-        ...form,
-        videoUrl: finalUrl,
-        tags: form.tags.split(",").map(t => t.trim()).filter(Boolean),
-        leagueFlag: "⚽",
+  try {
+    // ✅ FIXED: removed unused uploadData
+    const { error } = await supabase.storage
+      .from("videos")
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type || "video/mp4",
       });
 
-      notify("success", "Video published successfully!");
-      setForm({ title: "", league: "Premier League", duration: "", videoUrl: "", description: "", tags: "", isNew: true, featured: false, bgGrad: "135deg,#0a2e18,#1a5e32" });
-      setSelectedFile(null);
+    clearInterval(timer);
+
+    if (error) {
       setUploadProgress(0);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch (err) {
-      notify("error", `Upload failed: ${err.message}`);
-    } finally {
-      setUploading(false);
+
+      if (error.message.includes("Bucket not found")) {
+        throw new Error(
+          "Storage bucket missing. Go to Supabase Dashboard → Storage → New bucket → name it videos → set Public."
+        );
+      }
+
+      if (
+        error.message.includes("security") ||
+        error.message.includes("policy") ||
+        error.message.includes("Unauthorized")
+      ) {
+        throw new Error(
+          "Storage permission denied. Run the storage policy SQL in Supabase SQL Editor."
+        );
+      }
+
+      if (
+        error.message.includes("exceeded") ||
+        error.message.includes("limit")
+      ) {
+        throw new Error(
+          "File too large. Try a smaller file or use YouTube URL instead."
+        );
+      }
+
+      throw new Error(error.message);
     }
-  };
+
+    setUploadProgress(95);
+
+    const { data: urlData } = supabase.storage
+      .from("videos")
+      .getPublicUrl(filePath);
+
+    setUploadProgress(100);
+    return urlData.publicUrl;
+
+  } catch (err) {
+    clearInterval(timer);
+    setUploadProgress(0);
+    throw err;
+  }
+};
 
   return (
     <div style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:14, padding:28 }}>
