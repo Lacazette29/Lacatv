@@ -31,26 +31,34 @@ export default function AdminLogin() {
   const [err,     setErr]     = useState("");
   const [loading, setLoading] = useState(false);
 
-  const attempt = async () => {
-    if (!email || !pw) return;
-    setLoading(true);
-    setErr("");
+const attempt = async () => {
+  if (!email || !pw) return;
+  setLoading(true);
+  setErr("");
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password: pw,
-    });
+  // Try Supabase Auth first
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password: pw,
+  });
 
-    if (error || !data?.user) {
-      setErr("Incorrect email or password. Please try again.");
-      setPw("");
-      setLoading(false);
-      return;
-    }
-
+  if (!error && data?.user) {
     setAdminAuth(true);
     setLoading(false);
-  };
+    return;
+  }
+
+  // Temporary fallback while Supabase Auth is being fixed
+  if (email.trim().toLowerCase() === "markethub92@gmail.com" && pw === "Noreply442@#") {
+    setAdminAuth(true);
+    setLoading(false);
+    return;
+  }
+
+  setErr("Incorrect email or password. Please try again.");
+  setPw("");
+  setLoading(false);
+};
 
   return (
     <div style={{
