@@ -75,25 +75,34 @@ function UploadTab() {
   const uploadFileToSupabase = async (file) => {
     const ext      = file.name.split(".").pop();
     const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const path     = `highlights/${filename}`;
+    const filePath = `highlights/${filename}`;
 
-    setUploadProgress(10);
-
-    const { error } = await supabase.storage
-      .from("videos")
-      .upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-        onUploadProgress: (e) => {
-          setUploadProgress(Math.round((e.loaded / e.total) * 90));
-        },
+    // Supabase JS v2 doesn't support onUploadProgress in browser
+    // Use simulated progress so the UI doesn't feel frozen
+    setUploadProgress(15);
+    const timer = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 85) { clearInterval(timer); return 85; }
+        return prev + Math.floor(Math.random() * 6) + 2;
       });
+    }, 700);
 
-    if (error) throw new Error(error.message);
+    try {
+      const { error } = await supabase.storage
+        .from("videos")
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
 
-    const { data } = supabase.storage.from("videos").getPublicUrl(path);
-    setUploadProgress(100);
-    return data.publicUrl;
+      clearInterval(timer);
+      if (error) throw new Error(error.message);
+
+      setUploadProgress(95);
+      const { data } = supabase.storage.from("videos").getPublicUrl(filePath);
+      setUploadProgress(100);
+      return data.publicUrl;
+    } catch (err) {
+      clearInterval(timer);
+      throw err;
+    }
   };
 
   const publish = async () => {

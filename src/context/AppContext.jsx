@@ -20,10 +20,12 @@ export function AppProvider({ children }) {
     allowComments: false,
   });
 
-  // ── Restore auth session ──────────────────────
+  const [authChecked, setAuthChecked] = useState(false);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) setAdminAuth(true);
+      setAuthChecked(true);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setAdminAuth(!!session);
@@ -175,6 +177,7 @@ export function AppProvider({ children }) {
       videos, addVideo, updateVideo, deleteVideo, toggleFeatured, incrementViews,
       leagues,
       adminAuth, setAdminAuth, adminLogout,
+      authChecked,
       siteSettings, setSiteSettings, saveSettings,
       loading,
     }}>
