@@ -73,34 +73,50 @@ function UploadTab() {
   };
 
   const uploadFileToSupabase = async (file) => {
-    const ext      = file.name.split(".").pop();
+    const ext      = file.name.split(".").pop().toLowerCase();
     const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const filePath = `highlights/${filename}`;
 
-    // Supabase JS v2 doesn't support onUploadProgress in browser
-    // Use simulated progress so the UI doesn't feel frozen
-    setUploadProgress(15);
+    setUploadProgress(5);
+    let fakeP = 5;
     const timer = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 85) { clearInterval(timer); return 85; }
-        return prev + Math.floor(Math.random() * 6) + 2;
-      });
-    }, 700);
+      const inc = fakeP < 40 ? 8 : fakeP < 60 ? 5 : fakeP < 75 ? 2 : 0;
+      fakeP = Math.min(fakeP + inc, 80);
+      setUploadProgress(fakeP);
+    }, 600);
 
     try {
-      const { error } = await supabase.storage
+      const { data: uploadData, error } = await supabase.storage
         .from("videos")
-        .upload(filePath, file, { cacheControl: "3600", upsert: false });
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || "video/mp4",
+        });
 
       clearInterval(timer);
-      if (error) throw new Error(error.message);
+
+      if (error) {
+        setUploadProgress(0);
+        if (error.message.includes("Bucket not found")) {
+          throw new Error("Storage bucket missing. Go to Supabase Dashboard → Storage → New bucket → name it videos → set Public.");
+        }
+        if (error.message.includes("security") || error.message.includes("policy") || error.message.includes("Unauthorized")) {
+          throw new Error("Storage permission denied. Run the storage policy SQL in Supabase SQL Editor.");
+        }
+        if (error.message.includes("exceeded") || error.message.includes("limit")) {
+          throw new Error("File too large. Try a smaller file or use YouTube URL instead.");
+        }
+        throw new Error(error.message);
+      }
 
       setUploadProgress(95);
-      const { data } = supabase.storage.from("videos").getPublicUrl(filePath);
+      const { data: urlData } = supabase.storage.from("videos").getPublicUrl(filePath);
       setUploadProgress(100);
-      return data.publicUrl;
+      return urlData.publicUrl;
     } catch (err) {
       clearInterval(timer);
+      setUploadProgress(0);
       throw err;
     }
   };
