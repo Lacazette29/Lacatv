@@ -153,7 +153,11 @@ export function AppProvider({ children }) {
 
   const incrementViews = async (id) => {
     const current = videos.find(v => v.id === id);
-    await supabase.from("videos").update({ views: (current?.views || 0) + 1 }).eq("id", id);
+    const newViews = (current?.views || 0) + 1;
+    // Update Supabase
+    await supabase.from("videos").update({ views: newViews }).eq("id", id);
+    // Update local state immediately so count shows without refresh
+    setVideos(prev => prev.map(v => v.id === id ? { ...v, views: newViews } : v));
   };
 
   // ── Settings ──────────────────────────────────
