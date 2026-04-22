@@ -87,7 +87,7 @@ function UploadTab() {
     }, 600);
 
     try {
-      const { data: uploadData, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from("videos")
         .upload(filePath, file, {
           cacheControl: "3600",
