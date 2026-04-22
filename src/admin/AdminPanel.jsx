@@ -33,10 +33,10 @@ const TABS = [
 // ── UPLOAD TAB ────────────────────────────────
 function UploadTab() {
   const { addVideo } = useApp();
-  const [msg,      setMsg]      = useState(null);
+  const [msg,       setMsg]       = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [videoSource, setVideoSource] = useState("file"); // "file" | "url"
+  const [videoSource, setVideoSource] = useState("url"); // "url" | "file"
   const fileInputRef = useRef(null);
 
   const [form, setForm] = useState({
@@ -50,71 +50,63 @@ function UploadTab() {
   const set    = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const notify = (type, text) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 5000); };
 
+  // ── Extract YouTube video ID ──────────────────
+  const getYouTubeId = (url) => {
+    const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    return m ? m[1] : null;
+  };
+
+  const getYouTubeThumbnail = (url) => {
+    const id = getYouTubeId(url);
+    return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null;
+  };
+
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!file.type.startsWith("video/")) {
-      notify("error", "Please select a video file (MP4, MOV, AVI, etc.)");
-      return;
-    }
-    if (file.size > 500 * 1024 * 1024) {
-      notify("error", "File too large. Maximum size is 500MB.");
+    if (!file.type.startsWith("video/")) { notify("error", "Please select a video file."); return; }
+    if (file.size > 50 * 1024 * 1024) {
+      notify("error", "File too large (max 50MB on free plan). Use YouTube URL for longer videos.");
       return;
     }
     setSelectedFile(file);
-    // Auto-fill duration hint
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.onloadedmetadata = () => {
-      const mins = Math.floor(video.duration / 60);
-      const secs = Math.floor(video.duration % 60);
-      set("duration", `${mins}:${secs.toString().padStart(2, "0")}`);
+    const vid = document.createElement("video");
+    vid.preload = "metadata";
+    vid.onloadedmetadata = () => {
+      const m = Math.floor(vid.duration / 60);
+      const s = Math.floor(vid.duration % 60);
+      set("duration", `${m}:${s.toString().padStart(2,"0")}`);
     };
-    video.src = URL.createObjectURL(file);
+    vid.src = URL.createObjectURL(file);
   };
 
   const uploadFileToSupabase = async (file) => {
     const ext      = file.name.split(".").pop().toLowerCase();
-    const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const filePath = `highlights/${filename}`;
+    const filePath = `highlights/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
     setUploadProgress(5);
     let fakeP = 5;
     const timer = setInterval(() => {
-      const inc = fakeP < 40 ? 8 : fakeP < 60 ? 5 : fakeP < 75 ? 2 : 0;
-      fakeP = Math.min(fakeP + inc, 80);
+      const inc = fakeP < 40 ? 8 : fakeP < 60 ? 5 : fakeP < 70 ? 2 : 0;
+      fakeP = Math.min(fakeP + inc, 72);
       setUploadProgress(fakeP);
     }, 600);
 
     try {
       const { error } = await supabase.storage
         .from("videos")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type || "video/mp4",
-        });
-
+        .upload(filePath, file, { cacheControl:"3600", upsert:false, contentType: file.type||"video/mp4" });
       clearInterval(timer);
-
       if (error) {
         setUploadProgress(0);
-        if (error.message.includes("Bucket not found")) {
-          throw new Error("Storage bucket missing. Go to Supabase Dashboard → Storage → New bucket → name it videos → set Public.");
-        }
-        if (error.message.includes("security") || error.message.includes("policy") || error.message.includes("Unauthorized")) {
-          throw new Error("Storage permission denied. Run the storage policy SQL in Supabase SQL Editor.");
-        }
-        if (error.message.includes("exceeded") || error.message.includes("limit")) {
-          throw new Error("File too large. Try a smaller file or use YouTube URL instead.");
-        }
+        if (error.message.includes("Bucket")) throw new Error("Storage bucket missing — create a public bucket named \'videos\' in Supabase Storage.");
+        if (error.message.includes("security")||error.message.includes("policy")||error.message.includes("Unauthorized")) throw new Error("Storage permission denied — run the storage policy SQL in Supabase.");
         throw new Error(error.message);
       }
-
       setUploadProgress(95);
-      const { data: urlData } = supabase.storage.from("videos").getPublicUrl(filePath);
+      const { data } = supabase.storage.from("videos").getPublicUrl(filePath);
       setUploadProgress(100);
-      return urlData.publicUrl;
+      return data.publicUrl;
     } catch (err) {
       clearInterval(timer);
       setUploadProgress(0);
@@ -124,38 +116,36 @@ function UploadTab() {
 
   const publish = async () => {
     if (!form.title.trim()) return notify("error", "Title is required.");
-    if (videoSource === "file" && !selectedFile) return notify("error", "Please select a video file to upload.");
-    if (videoSource === "url" && !form.videoUrl.trim()) return notify("error", "Please enter a video URL.");
+    if (videoSource === "file" && !selectedFile) return notify("error", "Please select a video file.");
+    if (videoSource === "url"  && !form.videoUrl.trim()) return notify("error", "Please enter a YouTube URL or video link.");
 
     setUploading(true);
     setUploadProgress(0);
-
     try {
-      let finalUrl = form.videoUrl;
-
+      let finalUrl = form.videoUrl.trim();
       if (videoSource === "file" && selectedFile) {
-        notify("info", "Uploading video... please wait.");
         finalUrl = await uploadFileToSupabase(selectedFile);
       }
-
       await addVideo({
         ...form,
         videoUrl: finalUrl,
-        tags: form.tags.split(",").map(t => t.trim()).filter(Boolean),
+        tags: form.tags.split(",").map(t=>t.trim()).filter(Boolean),
         leagueFlag: "⚽",
       });
-
       notify("success", "Video published successfully!");
-      setForm({ title: "", league: "Premier League", duration: "", videoUrl: "", description: "", tags: "", isNew: true, featured: false, bgGrad: "135deg,#0a2e18,#1a5e32" });
+      setForm({ title:"", league:"Premier League", duration:"", videoUrl:"", description:"", tags:"", isNew:true, featured:false, bgGrad:"135deg,#0a2e18,#1a5e32" });
       setSelectedFile(null);
       setUploadProgress(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch (err) {
-      notify("error", `Upload failed: ${err.message}`);
+    } catch(err) {
+      notify("error", err.message);
     } finally {
       setUploading(false);
     }
   };
+
+  const ytThumb = videoSource === "url" && form.videoUrl ? getYouTubeThumbnail(form.videoUrl) : null;
+  const ytId    = videoSource === "url" && form.videoUrl ? getYouTubeId(form.videoUrl) : null;
 
   return (
     <div style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:14, padding:28 }}>
@@ -184,96 +174,102 @@ function UploadTab() {
           </select>
         </div>
         <div>
-          <label className="label">Duration (auto-filled from file)</label>
+          <label className="label">Duration (e.g. 8:24)</label>
           <input className="input" placeholder="8:24" value={form.duration} onChange={e=>set("duration",e.target.value)} />
         </div>
 
         {/* Video source toggle */}
         <div style={{ gridColumn:"1/-1" }}>
           <label className="label">Video Source</label>
-          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+          <div style={{ display:"flex", gap:8, marginBottom:14 }}>
             {[
-              { id:"file", label:"📁 Upload from Device" },
-              { id:"url",  label:"🔗 YouTube / URL"      },
+              { id:"url",  icon:"▶️", label:"YouTube / URL", desc:"Paste a YouTube or MP4 link" },
+              { id:"file", icon:"📁", label:"Upload File",   desc:"Upload small clips (max 50MB)" },
             ].map(opt=>(
-              <button
-                key={opt.id}
-                onClick={()=>setVideoSource(opt.id)}
-                style={{
-                  padding:"8px 18px", borderRadius:8, fontSize:13, fontWeight:500,
-                  border:`1.5px solid ${videoSource===opt.id?"var(--green-light)":"var(--border)"}`,
-                  background: videoSource===opt.id ? "rgba(34,160,80,0.12)" : "var(--surface2)",
-                  color: videoSource===opt.id ? "var(--green-light)" : "var(--text-muted)",
-                  cursor:"pointer", transition:"all 0.15s",
-                }}
-              >
-                {opt.label}
+              <button key={opt.id} onClick={()=>setVideoSource(opt.id)} style={{
+                flex:1, padding:"12px 16px", borderRadius:10, fontSize:13, fontWeight:500,
+                border:`1.5px solid ${videoSource===opt.id?"var(--green-light)":"var(--border)"}`,
+                background: videoSource===opt.id ? "rgba(34,160,80,0.1)" : "var(--surface2)",
+                color: videoSource===opt.id ? "var(--green-light)" : "var(--text-muted)",
+                cursor:"pointer", transition:"all 0.15s", textAlign:"left",
+              }}>
+                <div style={{ fontSize:18, marginBottom:4 }}>{opt.icon}</div>
+                <div style={{ fontWeight:600 }}>{opt.label}</div>
+                <div style={{ fontSize:11, opacity:0.7, marginTop:2 }}>{opt.desc}</div>
               </button>
             ))}
           </div>
 
-          {/* File upload */}
-          {videoSource === "file" && (
-            <div
-              onClick={()=>fileInputRef.current?.click()}
-              style={{
-                border:"2px dashed var(--border)",
-                borderRadius:10, padding:"28px 20px",
-                textAlign:"center", cursor:"pointer",
-                transition:"all 0.15s",
-                background: selectedFile ? "rgba(34,160,80,0.06)" : "var(--surface2)",
-                borderColor: selectedFile ? "var(--green-light)" : "var(--border)",
-              }}
-              onMouseEnter={e=>e.currentTarget.style.borderColor="var(--green-light)"}
-              onMouseLeave={e=>e.currentTarget.style.borderColor=selectedFile?"var(--green-light)":"var(--border)"}
-            >
+          {/* YouTube / URL input */}
+          {videoSource === "url" && (
+            <div>
               <input
-                ref={fileInputRef}
-                type="file"
-                accept="video/*"
-                onChange={handleFileSelect}
-                style={{ display:"none" }}
+                className="input"
+                placeholder="https://www.youtube.com/watch?v=... or https://cdn.example.com/video.mp4"
+                value={form.videoUrl}
+                onChange={e=>set("videoUrl",e.target.value)}
+                style={{ marginBottom: ytThumb ? 12 : 0 }}
               />
-              {selectedFile ? (
-                <div>
-                  <div style={{ fontSize:28, marginBottom:8 }}>✅</div>
-                  <div style={{ fontSize:14, fontWeight:600, color:"var(--green-light)", marginBottom:4 }}>{selectedFile.name}</div>
-                  <div style={{ fontSize:12, color:"var(--text-muted)" }}>{(selectedFile.size/(1024*1024)).toFixed(1)} MB</div>
-                  <button
-                    onClick={e=>{e.stopPropagation();setSelectedFile(null);if(fileInputRef.current)fileInputRef.current.value="";}}
-                    style={{ marginTop:8, fontSize:11, color:"var(--red)", background:"none", border:"none", cursor:"pointer" }}
-                  >
-                    Remove file
-                  </button>
+              {/* YouTube preview */}
+              {ytThumb && (
+                <div style={{ display:"flex", gap:12, alignItems:"center", padding:"12px", background:"var(--surface2)", borderRadius:8, border:"1px solid var(--border)" }}>
+                  <img src={ytThumb} alt="thumbnail" style={{ width:120, borderRadius:6, objectFit:"cover" }} />
+                  <div>
+                    <div style={{ fontSize:12, color:"var(--green-light)", fontWeight:600, marginBottom:4 }}>✅ YouTube video detected</div>
+                    <div style={{ fontSize:11, color:"var(--text-muted)" }}>ID: {ytId}</div>
+                    <div style={{ fontSize:11, color:"var(--text-dim)", marginTop:4 }}>Thumbnail auto-loaded. Fill in title and publish.</div>
+                  </div>
                 </div>
-              ) : (
-                <div>
-                  <div style={{ fontSize:32, marginBottom:8 }}>📁</div>
-                  <div style={{ fontSize:14, fontWeight:500, color:"var(--text-sec)", marginBottom:4 }}>Click to select video from your device</div>
-                  <div style={{ fontSize:12, color:"var(--text-muted)" }}>MP4, MOV, AVI, MKV — max 500MB</div>
+              )}
+              {form.videoUrl && !ytThumb && !form.videoUrl.includes("youtube") && (
+                <div style={{ fontSize:11, color:"var(--text-muted)", marginTop:6 }}>
+                  Direct MP4/video URL detected — will play in browser player
                 </div>
               )}
             </div>
           )}
 
-          {/* URL input */}
-          {videoSource === "url" && (
+          {/* File upload */}
+          {videoSource === "file" && (
             <div>
-              <input
-                className="input"
-                placeholder="https://youtube.com/watch?v=... or https://cdn.example.com/video.mp4"
-                value={form.videoUrl}
-                onChange={e=>set("videoUrl",e.target.value)}
-              />
-              <div style={{ fontSize:11, color:"var(--text-muted)", marginTop:6 }}>
-                Supports: YouTube embed URLs, MP4 direct links, CDN links
+              <div
+                onClick={()=>fileInputRef.current?.click()}
+                style={{
+                  border:"2px dashed var(--border)", borderRadius:10, padding:"24px 20px",
+                  textAlign:"center", cursor:"pointer", transition:"all 0.15s",
+                  background: selectedFile ? "rgba(34,160,80,0.06)" : "var(--surface2)",
+                  borderColor: selectedFile ? "var(--green-light)" : "var(--border)",
+                }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor="var(--green-light)"}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=selectedFile?"var(--green-light)":"var(--border)"}
+              >
+                <input ref={fileInputRef} type="file" accept="video/*" onChange={handleFileSelect} style={{ display:"none" }} />
+                {selectedFile ? (
+                  <div>
+                    <div style={{ fontSize:24, marginBottom:6 }}>✅</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:"var(--green-light)", marginBottom:2 }}>{selectedFile.name}</div>
+                    <div style={{ fontSize:11, color:"var(--text-muted)" }}>{(selectedFile.size/1024/1024).toFixed(1)} MB</div>
+                    <button onClick={e=>{e.stopPropagation();setSelectedFile(null);if(fileInputRef.current)fileInputRef.current.value="";}} style={{ marginTop:6, fontSize:11, color:"var(--red)", background:"none", border:"none", cursor:"pointer" }}>
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize:32, marginBottom:8 }}>📁</div>
+                    <div style={{ fontSize:13, fontWeight:500, color:"var(--text-sec)", marginBottom:4 }}>Click to select video from device</div>
+                    <div style={{ fontSize:11, color:"var(--text-muted)" }}>MP4, MOV, AVI — max 50MB (free plan limit)</div>
+                  </div>
+                )}
+              </div>
+              <div style={{ marginTop:10, padding:"10px 14px", background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.2)", borderRadius:8, fontSize:12, color:"var(--amber)" }}>
+                💡 For full match highlights (usually 200MB+), use YouTube URL instead. Upload files are best for short clips under 50MB.
               </div>
             </div>
           )}
         </div>
 
         {/* Upload progress */}
-        {uploading && uploadProgress > 0 && (
+        {uploading && uploadProgress > 0 && videoSource === "file" && (
           <div style={{ gridColumn:"1/-1" }}>
             <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"var(--text-muted)", marginBottom:6 }}>
               <span>Uploading to Supabase Storage...</span>
@@ -284,6 +280,14 @@ function UploadTab() {
             </div>
           </div>
         )}
+        {uploading && videoSource === "url" && (
+          <div style={{ gridColumn:"1/-1" }}>
+            <div style={{ fontSize:12, color:"var(--text-muted)", display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ width:14, height:14, border:"2px solid var(--border)", borderTopColor:"var(--green-light)", borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
+              Saving video to database...
+            </div>
+          </div>
+        )}
 
         {/* Description */}
         <div style={{ gridColumn:"1/-1" }}>
@@ -291,13 +295,11 @@ function UploadTab() {
           <textarea className="input" style={{ height:80, resize:"vertical" }} placeholder="Match summary, key moments, goalscorers..." value={form.description} onChange={e=>set("description",e.target.value)} />
         </div>
 
-        {/* Tags */}
+        {/* Tags + Color */}
         <div>
           <label className="label">Tags (comma-separated)</label>
           <input className="input" placeholder="Arsenal, Chelsea, Premier League" value={form.tags} onChange={e=>set("tags",e.target.value)} />
         </div>
-
-        {/* Color theme */}
         <div>
           <label className="label">Card Colour Theme</label>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:6 }}>
@@ -342,12 +344,12 @@ function UploadTab() {
         disabled={uploading}
         style={{ marginTop:22, padding:"11px 28px", fontSize:14, opacity:uploading?0.7:1 }}
       >
-        {uploading ? `Uploading ${uploadProgress}%...` : <><IcUpload size={15}/> Publish Video</>}
+        {uploading && videoSource==="url" ? "Publishing..." : uploading ? `Uploading ${uploadProgress}%...` : <><IcUpload size={15}/> Publish Video</>}
       </button>
+      <style>{"@keyframes spin { to { transform: rotate(360deg); } }"}</style>
     </div>
   );
 }
-
 // ── VIDEOS TAB ────────────────────────────────
 function VideosTab() {
   const { videos, deleteVideo, toggleFeatured } = useApp();
