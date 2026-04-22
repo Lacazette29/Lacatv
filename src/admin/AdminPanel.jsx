@@ -99,7 +99,7 @@ function UploadTab() {
       clearInterval(timer);
       if (error) {
         setUploadProgress(0);
-        if (error.message.includes("Bucket")) throw new Error("Storage bucket missing — create a public bucket named \'videos\' in Supabase Storage.");
+        if (error.message.includes("Bucket")) throw new Error("Storage bucket missing — create a public bucket named 'videos' in Supabase Storage.");
         if (error.message.includes("security")||error.message.includes("policy")||error.message.includes("Unauthorized")) throw new Error("Storage permission denied — run the storage policy SQL in Supabase.");
         throw new Error(error.message);
       }
